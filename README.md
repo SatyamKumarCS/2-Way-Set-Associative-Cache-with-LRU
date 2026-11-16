@@ -52,7 +52,7 @@ Cache misses fall into three classical categories:
 | Author Name | Role Identifier | Assigned Technical Work Package | Verified Git Deliverables |
 |---|---|---|---|
 | **Chinmay Soni** | Member 1 | Direct-Mapped Cache Baseline & Common System Package | `rtl/cache_pkg.sv`, `rtl/direct_mapped_cache.sv`, `tb/tb_direct_mapped.sv` |
-| **Lakshya Bapna** | Member 2 | Two-Way Datapath Subsystem & Datapath Unit Verification | `rtl/cache_2way_datapath.sv`, `tb/tb_cache_2way_datapath.sv` |
+| ** Bapna** | Member 2 | Two-Way Datapath Subsystem & Datapath Unit Verification | `rtl/cache_2way_datapath.sv`, `tb/tb_cache_2way_datapath.sv` |
 | **Satyam Kumar** | Member 3 | LRU Controller, Cache FSM Sequencer, Top-Level Integration & Smoke Testing | `rtl/lru_controller.sv`, `rtl/cache_2way_controller.sv`, `rtl/cache_2way_top.sv`, `tb/tb_lru_controller.sv`, `tb/tb_cache_2way_smoke.sv` |
 | **Krishna Verma** | Member 4 | Main Memory Subsystem, Dual-Cache Comparison Testbench, Analytics & Graphs | `sim/simple_main_memory.sv`, `tb/tb_cache_comparison.sv`, `analysis/analyze_results.py`, `results/results.csv`, `results/*.png` |
 | **Akshit Vats** | Member 5 | Verification Support, Benchmark Validation & Academic Documentation | Synthetic trace verification, invariant assertion validation, results auditing, and IEEE report documentation support *(subject to team confirmation)* |
