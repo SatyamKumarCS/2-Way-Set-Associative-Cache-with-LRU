@@ -1,0 +1,679 @@
+\documentclass[conference]{IEEEtran}
+
+% -----------------------------------------------------------------------------
+% Packages and Setup
+% -----------------------------------------------------------------------------
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{url}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, patterns, backgrounds}
+
+% Graphics path setup
+\graphicspath{{../results/}{results/}}
+
+% Correct bad hyphenation here
+\hyphenation{op-ti-cal net-works semi-con-duc-tor set-as-so-cia-tive direct-mapped}
+
+% -----------------------------------------------------------------------------
+% Document Header
+% -----------------------------------------------------------------------------
+\begin{document}
+
+\title{Design and Performance Analysis of a Two-Way Set-Associative Cache with LRU Replacement Compared with a Direct-Mapped Cache}
+
+\author{
+  \IEEEauthorblockN{
+    Satyam Kumar,
+    Krishna Verma,
+    Akshit Vats,
+    Chinmay Soni,
+    and Lakshya Bapna
+  }
+  \IEEEauthorblockA{
+    Department of Computer Science and Artificial Intelligence\\
+    Newton School of Technology
+  }
+}
+
+\maketitle
+
+% -----------------------------------------------------------------------------
+% Abstract and Index Terms
+% -----------------------------------------------------------------------------
+\begin{abstract}
+As semiconductor scaling continues to outpace off-chip memory bandwidth and latency---a disparity widely formalized as the ``memory wall''---the architectural efficiency of processor cache hierarchies has become a paramount determinant of overall computational throughput. In this paper, we present the cycle-accurate design, hardware modeling, and comparative performance evaluation of a synthesizable 128-byte, 2-way set-associative cache with 1-bit Least Recently Used (LRU) replacement against an identically sized direct-mapped cache baseline. Implemented in IEEE 1800-2012 SystemVerilog, both cache microarchitectures utilize a 32-bit byte-addressed memory interface, a 16-byte (4-word) cache-line granularity, blocking single-request execution, and robust valid/ready handshake signaling. The memory subsystem operates with a parameterized multi-cycle latency, enforcing synchronous 4-word burst refills. We subject both architectures to four rigorous synthetic access traces in an automated simulation testbench: sequential spatial locality, conflict-heavy address thrashing, explicit three-address LRU eviction validation, and a realistic mixed-workload trace. Empirical cycle-accurate simulation reveals that under severe conflict thrashing, the 2-way set-associative cache achieves a 75.00\% hit rate and 6.25 cycles per access, whereas the direct-mapped cache suffers a 0.00\% hit rate and 17.50 cycles per access. This yields a 75.00\% reduction in memory traffic (8 versus 32 memory reads) and a 64.29\% reduction in total execution latency (50 versus 140 cycles). These quantitative findings validate the efficacy of set associativity in eliminating conflict misses while confirming the deterministic correctness of our hardware LRU eviction algorithm for modern embedded processor architectures.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Cache memory, set-associative cache, direct-mapped cache, least recently used (LRU) replacement, conflict misses, cache thrashing, memory hierarchy, SystemVerilog RTL.
+\end{IEEEkeywords}
+
+% -----------------------------------------------------------------------------
+% Section I: Introduction
+% -----------------------------------------------------------------------------
+\section{Introduction}
+\IEEEPARstart{O}{ver} the past four decades, microprocessor operating frequencies and execution capabilities have escalated at a substantially higher rate than the access latencies of dynamic random-access memory (DRAM). This persistent performance divergence, famously termed the ``memory wall'' by Wulf and McKee and rigorously documented by Hennessy and Patterson~\cite{hennessy2017computer}, renders high-speed on-chip cache hierarchies indispensable in modern computer architecture. Caches serve as small, fast buffers situated between processor execution pipelines and high-capacity main storage, relying on the dual principles of \textit{temporal locality} (data accessed recently is likely to be accessed again in the near future) and \textit{spatial locality} (data physically adjacent to recently accessed addresses is likely to be referenced shortly)~\cite{smith1982cache}.
+
+According to the classical 3C classification proposed by Mark D. Hill and Alan J. Smith~\cite{hill1989evaluating}, cache misses are categorized into:
+\begin{enumerate}
+    \item \textit{Compulsory (Cold) Misses}: Unavoidable misses occurring on the initial reference to a block of data that has never resided in the cache.
+    \item \textit{Capacity Misses}: Misses occurring when the total working set of an executing program exceeds the aggregate storage capacity of the cache.
+    \item \textit{Conflict (Collision) Misses}: Misses occurring when multiple active memory blocks map to the identical cache set or line, forcing premature evictions despite available unoccupied capacity elsewhere in the cache.
+\end{enumerate}
+
+Direct-mapped caches represent the simplest placement policy: every physical memory address maps to exactly one predetermined cache line. While direct-mapped caches offer minimal hardware area overhead, simple single-comparator tag checking, and rapid hit detection, they are exceptionally susceptible to catastrophic conflict misses. If a tight loop or interleaved data structure continuously alternates between two distinct memory blocks that hash to the same line index, the cache undergoes continuous ping-pong eviction or ``cache thrashing''~\cite{jouppi1990improving, patterson2020riscv}. Under such conditions, the effective hit rate plunges to zero, degrading system execution throughput to raw memory bus speeds.
+
+Set-associative caches mitigate this vulnerability by organizing cache lines into sets containing $K$ independent slots or ``ways''~\cite{smith1982cache}. In a $K$-way set-associative cache, any given memory block can reside in any of the $K$ ways within its designated set. For $K=2$ (two-way set-associative), up to two conflicting memory blocks can reside simultaneously in on-chip storage without forcing mutual eviction. However, associativity requires a replacement policy to determine which way must be vacated when all ways in a set are valid and a new line must be loaded. The Least Recently Used (LRU) replacement algorithm represents the theoretically optimal online policy under temporal locality assumptions, evicting the line that has experienced the longest period of inactivity~\cite{smith1983instruction}.
+
+In this Phase~I research project, we design, implement, integrate, and validate a cycle-accurate, synthesizable hardware model of both an 8-line (128-byte) baseline direct-mapped cache and a 4-set, 2-way set-associative cache (128-byte total capacity) equipped with a 1-bit LRU replacement controller. Both architectures are developed in IEEE 1800-2012 SystemVerilog and subjected to comprehensive comparative testing against an identical parameterized main memory model under synthetic access patterns. The complete SystemVerilog implementation, testbenches, and reproducibility scripts are available in our project repository: \url{https://github.com/chinmay7980/2-Way-Set-Associative-Cache-with-LRU.git}.
+
+The remainder of this paper is structured as follows. Section~\ref{sec:related_work} reviews foundational literature on cache placement and replacement algorithms. Section~\ref{sec:architecture} details the proposed hardware architectures, address decoders, datapath logic, LRU state transitions, finite state machine (FSM) controllers, and refill protocols. Section~\ref{sec:contributions} outlines individual engineering contributions across the collaborative team structure. Section~\ref{sec:experiments} presents empirical simulation results, quantitative comparative metrics, and microarchitectural complexity assessments. Section~\ref{sec:conclusion} concludes the paper and delineates the Phase~II technical roadmap.
+
+% -----------------------------------------------------------------------------
+% Section II: Related Work / Literature Review
+% -----------------------------------------------------------------------------
+\section{Related Work and Literature Review}
+\label{sec:related_work}
+
+The architecture and optimization of cache memories have been extensively investigated since the pioneering surveys by Alan Jay Smith~\cite{smith1982cache}. Smith established the fundamental taxonomy of cache placement rules, write strategies (write-through versus write-back), fetch algorithms (demand fetch versus prefetching), and block replacement schemes, emphasizing that miss ratios decrease monotonically with increased associativity, albeit with diminishing returns.
+
+In their seminal treatise on cache associativity, Hill and Smith~\cite{hill1989evaluating} quantitatively evaluated the performance trade-offs of varying degrees of associativity across real-world instruction and data workloads. They formulated the well-known ``$2:1$ cache rule of thumb,'' which posits that a direct-mapped cache of size $N$ exhibits an empirical miss rate approximately equal to a 2-way set-associative cache of size $N/2$. However, Hill and Smith cautioned that set associativity incurs hardware complexity: parallel tag comparators, wider multiplexers, replacement state logic, and increased critical path delay during the tag-matching cycle. Consequently, direct-mapped caches were historically favored in early pipelined RISC architectures where single-cycle access latency was critical.
+
+Jouppi~\cite{jouppi1990improving} analyzed the specific nature of conflict misses in direct-mapped architectures, demonstrating that high-performance RISC processors frequently experience severe conflict thrashing due to spatial and temporal interference between instructions and loop operands. Jouppi proposed augmenting direct-mapped caches with a small, fully associative ``victim cache'' to rescue evicted blocks, demonstrating that even a minimal 4-entry associative buffer dramatically reduces conflict penalties. This work highlighted that providing alternative placement options for conflicting addresses yields outsized performance dividends.
+
+Replacement policy selection is equally critical. In their comparative evaluation of cache replacement policies, Smith and Goodman~\cite{smith1983instruction} contrasted LRU, First-In First-Out (FIFO), and Random replacement across diverse working sets. Their empirical results demonstrated that true LRU consistently achieves the lowest miss rates for instruction and data caches by exploiting the temporal recurrence of active program segments. For a 2-way set-associative cache, full LRU requires only a single tracking bit per set, eliminating the prohibitive multi-bit matrix overhead associated with higher-order associativities ($K \ge 4$).
+
+Modern computer architecture textbooks, such as Hennessy and Patterson~\cite{hennessy2017computer} and Patterson and Hennessy~\cite{patterson2020riscv}, synthesize these principles into standardized design methodologies. They demonstrate that for contemporary resource-constrained embedded systems, edge Internet-of-Things (IoT) processors, and microcontroller execution units, a 2-way set-associative organization represents an exceptional Pareto-optimal trade-off between hardware silicon overhead and conflict miss mitigation. Our Phase~I investigation builds directly upon these foundational theoretical insights, validating their concrete RTL realization and performance characteristics in hardware.
+
+% -----------------------------------------------------------------------------
+% Section III: Proposed Hardware Architecture & Implementation
+% -----------------------------------------------------------------------------
+\section{Proposed Hardware Architecture and Implementation}
+\label{sec:architecture}
+
+\subsection{Overall System Architecture}
+The system architecture developed in this project consists of two distinct, fully realized cache microarchitectures: a baseline Direct-Mapped Cache (\texttt{direct\_mapped\_cache}) and a modular Two-Way Set-Associative Cache (\texttt{cache\_2way\_top}), both interfacing with a synchronous main memory module (\texttt{simple\_main\_memory}) and an automated verification testbench. Fig.~\ref{fig:sys_arch} illustrates the high-level system block diagram.
+
+\begin{figure*}[t!]
+\centering
+\begin{tikzpicture}[
+    scale=0.95, every node/.style={scale=0.95},
+    box/.style={rectangle, draw=black, thick, fill=blue!10, align=center, rounded corners, minimum height=2.2em, minimum width=6.5em},
+    block/.style={rectangle, draw=black, thick, fill=gray!10, align=center, rounded corners, minimum height=2.2em, minimum width=6.0em},
+    subbox/.style={rectangle, draw=black!70, dashed, fill=green!8, align=center, rounded corners, minimum height=1.8em, minimum width=5.5em},
+    line/.style={draw, -{Latex[length=2.5mm,width=1.5mm]}, thick}
+]
+
+% CPU / TB Block
+\node[box, fill=orange!20, minimum height=7.5em, minimum width=6.2em] (cpu) at (0, 0) {
+    \textbf{CPU Driver}\\
+    \textbf{\& Testbench}\\
+    \scriptsize 32-bit Address\\
+    \scriptsize Handshake Control\\
+    \scriptsize Backpressure Gen.
+};
+
+% Cache Subsystem Container
+\draw[thick, fill=blue!5, rounded corners] (3.0, -2.6) rectangle (8.6, 2.6);
+\node at (5.8, 2.3) {\textbf{Cache Subsystem (128 Bytes)}};
+
+% Submodules inside 2-Way Top
+\node[subbox] (ctrl) at (4.5, 1.2) {\textbf{FSM Controller}};
+\node[subbox] (dp)   at (4.5, -0.2) {\textbf{2-Way Datapath}};
+\node[subbox] (lru)  at (4.5, -1.6) {\textbf{LRU Unit}};
+\node[subbox, fill=yellow!20] (cnt)  at (7.2, -0.2) {\textbf{Perf. Counters}};
+
+% Memory Block
+\node[box, fill=red!15, minimum height=7.5em, minimum width=6.0em] (mem) at (10.8, 0) {
+    \textbf{Main Memory}\\
+    \scriptsize 1024 Words $\times$ 32b\\
+    \scriptsize Parameterized Latency\\
+    \scriptsize 4-Word Burst Refill
+};
+
+% CPU to Cache buses
+\draw[line] ([yshift=1.2em]cpu.east) -- node[above, font=\scriptsize] {\texttt{cpu\_req\_*}} ([yshift=1.2em]3.0, 0);
+\draw[line] ([yshift=-1.2em]3.0, 0) -- node[below, font=\scriptsize] {\texttt{cpu\_resp\_*}} ([yshift=-1.2em]cpu.east);
+
+% Internal Connections
+\draw[line] (ctrl) -- (dp);
+\draw[line] (dp) -- (lru);
+\draw[line] (ctrl) -- (lru);
+\draw[line] (ctrl) -- (cnt);
+
+% Cache to Memory buses
+\draw[line] ([yshift=1.2em]8.6, 0) -- node[above, font=\scriptsize] {\texttt{mem\_req\_*}} ([yshift=1.2em]mem.west);
+\draw[line] ([yshift=-1.2em]mem.west) -- node[below, font=\scriptsize] {\texttt{mem\_resp\_*}} ([yshift=-1.2em]8.6, 0);
+
+\end{tikzpicture}
+\caption{System-level block diagram depicting the CPU driver, the modular 2-way set-associative cache subsystem with decoupled datapath, controller, LRU unit, and performance counters, and the synchronous main memory.}
+\label{fig:sys_arch}
+\end{figure*}
+
+Both caches share a standardized, synchronous active-low reset interface (\texttt{rst\_n}) and run on a common system clock (\texttt{clk}). The CPU interface implements a single-request blocking protocol:
+\begin{itemize}
+    \item Input request: \texttt{cpu\_req\_valid} (1 bit), \texttt{cpu\_req\_addr} (32 bits).
+    \item Request acceptance: \texttt{cpu\_req\_ready} (1 bit).
+    \item Output response: \texttt{cpu\_resp\_valid} (1 bit), \texttt{cpu\_resp\_data} (32 bits).
+    \item Response acceptance: \texttt{cpu\_resp\_ready} (1 bit).
+\end{itemize}
+Handshakes conform to standard ready/valid rules: a transfer is committed on the active clock edge if and only if both \texttt{valid} and \texttt{ready} are asserted simultaneously. The cache guarantees that once \texttt{cpu\_resp\_valid} is raised, both the valid flag and the corresponding \texttt{cpu\_resp\_data} remain perfectly stable until the CPU asserts \texttt{cpu\_resp\_ready}.
+
+\subsection{Architectural Parameters and Address Mapping}
+To ensure a strictly fair, rigorous comparative evaluation, both cache microarchitectures are configured with identical total storage capacities of 128 bytes, partitioned into 16-byte cache lines. Each cache line comprises four 32-bit words. Table~\ref{tab:hardware_params} summarizes the complete hardware parameterization defined in \texttt{rtl/cache\_pkg.sv}.
+
+\begin{table}[htbp]
+\caption{Microarchitectural Configuration and Parameter Comparison}
+\label{tab:hardware_params}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcc}
+\toprule
+\textbf{Architectural Parameter} & \textbf{Direct-Mapped} & \textbf{2-Way Set-Assoc.} \\
+\midrule
+Total Data Capacity & 128 Bytes & 128 Bytes \\
+Cache Line Granularity & 16 Bytes & 16 Bytes \\
+Words per Cache Line & 4 Words (32-bit) & 4 Words (32-bit) \\
+Number of Lines / Sets & 8 Lines & 4 Sets \\
+Associativity Degree ($K$) & 1 (Direct-Mapped) & 2 Ways per Set \\
+Total Cache Lines & 8 Lines & 8 Lines \\
+Byte Offset Field & Bits $[1:0]$ (2 bits) & Bits $[1:0]$ (2 bits) \\
+Word Offset Field & Bits $[3:2]$ (2 bits) & Bits $[3:2]$ (2 bits) \\
+Set / Line Index Field & Bits $[6:4]$ (3 bits) & Bits $[5:4]$ (2 bits) \\
+Tag Address Field & Bits $[31:7]$ (25 bits) & Bits $[31:6]$ (26 bits) \\
+Tag Storage Overhead & $8 \times 25 = 200$ bits & $8 \times 26 = 208$ bits \\
+Valid Bits & 8 bits (1 per line) & 8 bits (1 per way) \\
+Replacement State & None & 4 bits (1 per set) \\
+Replacement Policy & Overwrite / Evict & True LRU (1 bit/set) \\
+Access Mode & Read-Only / Blocking & Read-Only / Blocking \\
+Refill Protocol & 4-Word Synchronous & 4-Word Synchronous \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Fig.~\ref{fig:addr_mapping} illustrates the physical 32-bit byte-address partitioning for both microarchitectures. Because the 2-way set-associative cache groups its eight lines into four sets of two ways each, it requires only a 2-bit set index (\texttt{address[5:4]}), expanding its tag field to 26 bits (\texttt{address[31:6]}). In contrast, the direct-mapped cache indexes across all eight independent lines, requiring a 3-bit index (\texttt{address[6:4]}) and a 25-bit tag (\texttt{address[31:7]}). Both designs use \texttt{address[3:2]} to select one of the four 32-bit words within a line, while byte-offset bits \texttt{address[1:0]} are ignored during 32-bit aligned word transfers.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+    scale=0.88, every node/.style={scale=0.88},
+    field/.style={rectangle, draw=black, thick, fill=blue!10, minimum height=1.8em, align=center},
+    lbl/.style={font=\scriptsize, align=center}
+]
+
+% Direct Mapped Address Breakdown
+\node[anchor=west, font=\bfseries\small] at (0, 2.2) {Direct-Mapped 32-bit Address:};
+\node[field, minimum width=3.8cm, fill=red!15] (dm_tag) at (1.9, 1.4) {Tag [31:7]};
+\node[field, minimum width=1.4cm, fill=green!15] (dm_idx) at (4.5, 1.4) {Index [6:4]};
+\node[field, minimum width=1.3cm, fill=yellow!20] (dm_word) at (5.85, 1.4) {Word [3:2]};
+\node[field, minimum width=1.1cm, fill=gray!20] (dm_byte) at (7.05, 1.4) {Byte [1:0]};
+
+\node[lbl] at (1.9, 0.8) {25 bits};
+\node[lbl] at (4.5, 0.8) {3 bits (8 lines)};
+\node[lbl] at (5.85, 0.8) {2 bits (4 words)};
+\node[lbl] at (7.05, 0.8) {2 bits};
+
+% 2-Way Set Associative Address Breakdown
+\node[anchor=west, font=\bfseries\small] at (0, -0.1) {2-Way Set-Associative 32-bit Address:};
+\node[field, minimum width=4.1cm, fill=red!15] (sa_tag) at (2.05, -0.9) {Tag [31:6]};
+\node[field, minimum width=1.1cm, fill=green!15] (sa_idx) at (4.65, -0.9) {Set [5:4]};
+\node[field, minimum width=1.3cm, fill=yellow!20] (sa_word) at (5.85, -0.9) {Word [3:2]};
+\node[field, minimum width=1.1cm, fill=gray!20] (sa_byte) at (7.05, -0.9) {Byte [1:0]};
+
+\node[lbl] at (2.05, -1.5) {26 bits};
+\node[lbl] at (4.65, -1.5) {2 bits (4 sets)};
+\node[lbl] at (5.85, -1.5) {2 bits (4 words)};
+\node[lbl] at (7.05, -1.5) {2 bits};
+
+\end{tikzpicture}%
+}
+\caption{Comparative 32-bit address field partitioning between direct-mapped (25-bit tag, 3-bit line index) and 2-way set-associative (26-bit tag, 2-bit set index) configurations.}
+\label{fig:addr_mapping}
+\end{figure}
+
+\subsection{Direct-Mapped Baseline Architecture}
+The baseline direct-mapped cache is implemented in \texttt{rtl/direct\_mapped\_cache.sv} as an integrated monolithic module. Its storage arrays consist of:
+\begin{itemize}
+    \item \texttt{data\_array[0:7][0:3]}: $8 \times 4 \times 32$-bit storage.
+    \item \texttt{tag\_array[0:7]}: $8 \times 25$-bit tag registers.
+    \item \texttt{valid\_array[0:7]}: $8 \times 1$-bit validity flags.
+\end{itemize}
+During the \texttt{LOOKUP} phase, the 3-bit line index \texttt{address[6:4]} selects the corresponding line entry. The stored 25-bit tag is compared against \texttt{address[31:7]}, and the valid bit is inspected:
+\begin{equation}
+\text{hit} = \text{valid}[\text{idx}] \land (\text{tag\_arr}[\text{idx}] == \text{req\_tag})
+\end{equation}
+If \texttt{cache\_hit} evaluates to logic~1, the requested 32-bit word is extracted from \texttt{data\_array[index][word\_index]} and forwarded to \texttt{cpu\_resp\_data}, triggering an immediate transition to the \texttt{RESP} state in a single clock cycle. If \texttt{cache\_hit} is logic~0, the cache signals a miss, initiates a 4-word refill from main memory, overwrites the targeted line, updates the tag, and sets the valid bit to 1.
+
+\subsection{Two-Way Set-Associative Datapath Architecture}
+The two-way set-associative datapath is implemented in \texttt{rtl/cache\_2way\_datapath.sv}. It decouples the storage arrays and tag-matching comparators from the control sequencing logic. The datapath instantiates two parallel ways (Way~0 and Way~1) across four sets:
+\begin{itemize}
+    \item Way~0 Storage: \texttt{data\_array\_w0[0:3][0:3]}, \texttt{tag\_array\_w0[0:3]}, and \texttt{valid\_array\_w0[0:3]}.
+    \item Way~1 Storage: \texttt{data\_array\_w1[0:3][0:3]}, \texttt{tag\_array\_w1[0:3]}, and \texttt{valid\_array\_w1[0:3]}.
+\end{itemize}
+
+Fig.~\ref{fig:datapath_diagram} illustrates the parallel tag comparison and data selection circuitry. For a registered set index \texttt{set\_idx = address[5:4]}, the datapath performs concurrent tag comparisons across both ways:
+\begin{align}
+\text{hit\_w0} &= \text{valid\_w0}[\text{set}] \land (\text{tag\_w0}[\text{set}] == \text{req\_tag}) \\
+\text{hit\_w1} &= \text{valid\_w1}[\text{set}] \land (\text{tag\_w1}[\text{set}] == \text{req\_tag}) \\
+\text{cache\_hit} &= \text{hit\_w0} \lor \text{hit\_w1}
+\end{align}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+    scale=0.82, every node/.style={scale=0.82},
+    arr/.style={rectangle, draw=black, thick, fill=blue!15, minimum height=3.5em, minimum width=4.8em, align=center},
+    comp/.style={circle, draw=black, thick, fill=yellow!25, minimum size=1.8em, align=center, font=\scriptsize\bfseries},
+    mux/.style={trapezium, draw=black, thick, fill=gray!20, minimum height=1.6em, align=center, shape border rotate=270, font=\scriptsize},
+    gate/.style={rectangle, draw=black, thick, fill=green!20, minimum height=1.8em, minimum width=2.4em, align=center, font=\scriptsize\bfseries},
+    line/.style={draw, -{Latex[length=2.0mm,width=1.2mm]}, thick}
+]
+
+% Inputs
+\node[font=\bfseries\scriptsize] (set_in) at (-0.5, 2.0) {Set Index [5:4]};
+\node[font=\bfseries\scriptsize] (tag_in) at (-0.5, 0.4) {Tag [31:6]};
+\node[font=\bfseries\scriptsize] (word_in) at (-0.5, -2.4) {Word [3:2]};
+
+% Way 0 Block
+\node[arr] (w0) at (2.2, 1.2) {\textbf{Way 0}\\ \scriptsize Tag[0:3]\\ \scriptsize Data[0:3][0:3]\\ \scriptsize Valid[0:3]};
+
+% Way 1 Block
+\node[arr] (w1) at (2.2, -1.0) {\textbf{Way 1}\\ \scriptsize Tag[0:3]\\ \scriptsize Data[0:3][0:3]\\ \scriptsize Valid[0:3]};
+
+% Comparators
+\node[comp] (cmp0) at (4.5, 1.2) {$==$};
+\node[comp] (cmp1) at (4.5, -1.0) {$==$};
+
+% Hit Gates
+\node[gate] (and0) at (5.8, 1.2) {AND};
+\node[gate] (and1) at (5.8, -1.0) {AND};
+
+% OR Gate
+\node[gate, fill=orange!25] (or_hit) at (7.2, 0.1) {OR};
+\node[font=\bfseries\scriptsize] (hit_out) at (8.6, 0.1) {\texttt{cache\_hit}};
+
+% Data Mux
+\node[mux] (dmux) at (6.8, -2.2) {MUX};
+\node[font=\bfseries\scriptsize] (data_out) at (8.6, -2.2) {\texttt{hit\_word\_data}};
+
+% Signal routing
+\draw[line] (set_in) -| (w0.north);
+\draw[line] (set_in) -| (w1.north);
+\draw[line] (tag_in) -- (cmp0.west);
+\draw[line] (tag_in) -- (cmp1.west);
+
+\draw[line] ([yshift=0.5em]w0.east) -- node[above, font=\tiny] {Tag} (cmp0.west);
+\draw[line] ([yshift=0.5em]w1.east) -- node[above, font=\tiny] {Tag} (cmp1.west);
+
+\draw[line] (cmp0.east) -- (and0.west);
+\draw[line] (cmp1.east) -- (and1.west);
+
+\draw[line] ([yshift=-0.5em]w0.east) -- node[below, font=\tiny] {Valid} (and0.west);
+\draw[line] ([yshift=-0.5em]w1.east) -- node[below, font=\tiny] {Valid} (and1.west);
+
+\draw[line] (and0.east) -- node[above, font=\tiny] {hit\_w0} (or_hit.north west);
+\draw[line] (and1.east) -- node[below, font=\tiny] {hit\_w1} (or_hit.south west);
+\draw[line] (or_hit.east) -- (hit_out);
+
+\draw[line] ([xshift=1em]w0.south) |- (dmux.north west);
+\draw[line] ([xshift=1em]w1.south) |- (dmux.south west);
+\draw[line] (and1.south) |- (dmux.north);
+\draw[line] (dmux.east) -- (data_out);
+
+\end{tikzpicture}%
+}
+\caption{Two-Way Set-Associative datapath microarchitecture illustrating parallel tag matching across Way~0 and Way~1, hit logic generation, and way selection multiplexing.}
+\label{fig:datapath_diagram}
+\end{figure}
+
+Because a memory address can match at most one valid way at any given instant (guaranteed by our mutual-exclusion allocation invariants), \texttt{hit\_way0} and \texttt{hit\_way1} are strictly mutually exclusive. If \texttt{hit\_way0} is asserted, \texttt{hit\_way\_select} evaluates to 0, routing the selected word from Way~0; if \texttt{hit\_way1} is asserted, \texttt{hit\_way\_select} evaluates to 1, routing the word from Way~1.
+
+\subsection{1-Bit LRU Replacement Controller}
+The LRU replacement controller is implemented as an independent hardware module in \texttt{rtl/lru\_controller.sv}. For a 2-way set-associative cache, full LRU tracking requires exactly 1 bit of replacement state per set:
+\begin{equation}
+\text{LRU Array: } \text{lru\_bits}[0:3], \quad \text{Width} = 1\text{ bit per set}
+\end{equation}
+
+The architectural convention adopted throughout our design is strictly formalized as:
+\begin{itemize}
+    \item $\text{lru\_bits}[\text{set}] = 0$: Way~0 was least recently accessed; Way~0 is the replacement candidate.
+    \item $\text{lru\_bits}[\text{set}] = 1$: Way~1 was least recently accessed; Way~1 is the replacement candidate.
+\end{itemize}
+
+Whenever an access occurs to a set (either a cache hit during \texttt{LOOKUP} or a newly completed refill during \texttt{RESP}), the replacement bit is deterministically updated:
+\begin{equation}
+\text{lru\_bits}[\text{set}] \leftarrow \begin{cases}
+1, & \text{if Way 0 accessed}, \\
+0, & \text{if Way 1 accessed}.
+\end{cases}
+\end{equation}
+
+Crucially, the replacement controller enforces an \textit{invalid-first allocation priority} before consulting the LRU bit:
+\begin{equation}
+\text{replace\_way} = \begin{cases}
+0, & \text{if } \neg\text{v\_w0}[\text{set}], \\
+1, & \text{if } \text{v\_w0}[\text{set}] \land \neg\text{v\_w1}[\text{set}], \\
+\text{lru}[\text{set}], & \text{if } \text{v\_w0}[\text{set}] \land \text{v\_w1}[\text{set}].
+\end{cases}
+\end{equation}
+This hardware rule guarantees that empty (invalid) cache ways are always populated first upon initial cold accesses, entirely preventing premature evictions of valid working data.
+
+\subsection{Cache Controller and Finite State Machine (FSM)}
+The sequencing of cache operations is governed by a synchronous Mealy/Moore finite state machine implemented in \texttt{rtl/cache\_2way\_controller.sv}. The FSM comprises five orthogonal states, depicted in the state transition diagram in Fig.~\ref{fig:fsm_diagram}:
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.92\columnwidth}{!}{%
+\begin{tikzpicture}[
+    scale=0.85, every node/.style={scale=0.85},
+    state/.style={ellipse, draw=black, thick, fill=blue!10, align=center, minimum height=2.2em, minimum width=5.5em, font=\bfseries\small},
+    line/.style={draw, -{Latex[length=2.5mm,width=1.5mm]}, thick},
+    lbl/.style={font=\scriptsize, align=center, fill=white, inner sep=1.5pt}
+]
+
+% States
+\node[state, fill=green!20] (idle)   at (0, 2.5) {IDLE};
+\node[state]                (lookup) at (4.0, 2.5) {LOOKUP};
+\node[state, fill=yellow!25](req)    at (4.0, -0.5) {MEM\_REQ};
+\node[state, fill=orange!25](waitst) at (0, -0.5) {MEM\_WAIT};
+\node[state, fill=purple!15](resp)   at (2.0, 1.0) {RESP};
+
+% Transitions
+\draw[line] (idle) -- node[above, font=\scriptsize] {\texttt{cpu\_req\_valid}} (lookup);
+\draw[line] (idle) to [loop above] node[above, font=\scriptsize] {!cpu\_req\_valid} (idle);
+
+\draw[line] (lookup) -- node[above, font=\scriptsize, sloped] {cache\_hit} (resp);
+\draw[line] (lookup) -- node[right, font=\scriptsize] {!cache\_hit} (req);
+
+\draw[line] (req) -- node[above, font=\scriptsize] {\texttt{mem\_req\_ready}} (waitst);
+\draw[line] (req) to [loop right] node[right, font=\scriptsize] {!mem\_req\_ready} (req);
+
+\draw[line] (waitst) to [loop left] node[left, font=\scriptsize] {word\_cnt $<$ 3 $\lor$ !ready} (waitst);
+\draw[line] (waitst) -- node[above, font=\scriptsize, sloped] {word\_cnt == 3 $\land$ ready} (resp);
+
+\draw[line] (resp) -- node[left, font=\scriptsize] {\texttt{cpu\_resp\_ready}} (idle);
+\draw[line] (resp) to [loop above] node[above, font=\scriptsize] {!cpu\_resp\_ready} (resp);
+
+\end{tikzpicture}%
+}
+\caption{Finite State Machine (FSM) state transition diagram for the blocking cache controller, showing lookup, 4-word refill loop, and handshake synchronization.}
+\label{fig:fsm_diagram}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{IDLE}: The cache asserts \texttt{cpu\_req\_ready = 1}. Upon detecting \texttt{cpu\_req\_valid = 1}, the controller latches \texttt{cpu\_req\_addr} into internal registers and transitions to \texttt{LOOKUP}.
+    \item \textbf{LOOKUP}: The datapath performs parallel tag comparison. If \texttt{cache\_hit} is true, \texttt{hit\_count} increments, the LRU state updates to reflect the accessed way, and the FSM branches directly to \texttt{RESP}. If \texttt{cache\_hit} is false, \texttt{miss\_count} increments, the victim way is evaluated via \texttt{replace\_way}, the word refill counter \texttt{refill\_word\_cnt} is reset to 0, and the FSM transitions to \texttt{MEM\_REQ}.
+    \item \textbf{MEM\_REQ}: The controller generates a word read request to main memory, asserting \texttt{mem\_req\_valid = 1} with \texttt{mem\_req\_addr} aligned to the 16-byte boundary. When the memory asserts \texttt{mem\_req\_ready = 1}, \texttt{mem\_word\_read\_count} increments, and the FSM transitions to \texttt{MEM\_WAIT}.
+    \item \textbf{MEM\_WAIT}: The controller sets \texttt{mem\_resp\_ready = 1} and waits for \texttt{mem\_resp\_valid = 1}. Upon receiving data, the 32-bit word is written to \texttt{data\_array} at \texttt{[replace\_way][latched\_set][refill\_word\_cnt]}. If \texttt{refill\_word\_cnt < 3}, \texttt{refill\_word\_cnt} increments, and the FSM loops back to \texttt{MEM\_REQ} for the next word. When \texttt{refill\_word\_cnt == 3}, the final word is written, the tag array is updated with \texttt{latched\_tag}, the valid bit is set, the LRU bit is updated to point away from \texttt{replace\_way}, and the FSM transitions to \texttt{RESP}.
+    \item \textbf{RESP}: The cache drives \texttt{cpu\_resp\_valid = 1} and outputs the requested 32-bit word on \texttt{cpu\_resp\_data}. Both signals remain asserted until the CPU raises \texttt{cpu\_resp\_ready = 1}, whereupon the FSM returns to \texttt{IDLE}.
+\end{enumerate}
+
+\subsection{Main Memory Subsystem and Burst Refill Protocol}
+Main memory is modeled in \texttt{sim/simple\_main\_memory.sv} as an on-chip synchronous SRAM comprising 1024 32-bit words (4~KB addressable space). Memory data initialization follows a deterministic arithmetic pattern:
+\begin{equation}
+\text{memory\_array}[i] = 32'\text{hA5000000} \oplus i, \quad i \in [0, 1023]
+\end{equation}
+This deterministic structure allows the verification environment to independently calculate the exact expected data word for any byte address:
+\begin{equation}
+\text{Expected Data} = 32'\text{hA5000000} \oplus \left( \frac{\text{address}}{4} \right)
+\end{equation}
+The memory controller implements a parameterized fixed access latency (\texttt{LATENCY\_CYCLES = 2}) and back-to-back request delay (\texttt{REQUEST\_GAP\_CYCLES = 1}), accurately emulating realistic DRAM/SRAM timing penalties. When a cache line refill occurs, four consecutive read requests are issued to memory addresses aligned to 16-byte boundaries ($\text{word\_idx} = 0, 1, 2, 3$).
+
+\subsection{SystemVerilog Implementation Summary}
+The complete project codebase is implemented using synthesizable SystemVerilog constructs without relying on proprietary simulation libraries. Table~\ref{tab:rtl_modules} enumerates the constituent source modules.
+
+\begin{table}[htbp]
+\caption{SystemVerilog RTL Implementation Modules and Descriptions}
+\label{tab:rtl_modules}
+\centering
+\begin{tabularx}{\columnwidth}{lX}
+\toprule
+\textbf{Source File} & \textbf{Microarchitectural Role and Features} \\
+\midrule
+\texttt{rtl/cache\_pkg.sv} & SystemVerilog package containing all global architectural parameters, bit widths, constants, and state declarations. \\
+\addlinespace[0.3em]
+\texttt{rtl/direct\_mapped\_cache.sv} & Baseline 8-line direct-mapped cache incorporating integrated storage arrays, single tag comparator, blocking FSM, and counters. \\
+\addlinespace[0.3em]
+\texttt{rtl/cache\_2way\_datapath.sv} & Modular datapath containing dual way storage arrays, parallel tag comparators, word extractors, and write-enable demuxes. \\
+\addlinespace[0.3em]
+\texttt{rtl/lru\_controller.sv} & 1-bit LRU replacement engine managing 4 set bits, implementing invalid-first priority and access-driven state updates. \\
+\addlinespace[0.3em]
+\texttt{rtl/cache\_2way\_controller.sv} & Central 5-state FSM sequencer governing handshakes, memory burst generation, array updates, and counter tracking. \\
+\addlinespace[0.3em]
+\texttt{rtl/cache\_2way\_top.sv} & Structural top-level wrapper interconnecting datapath, controller, LRU unit, and performance counter registers. \\
+\addlinespace[0.3em]
+\texttt{sim/simple\_main\_memory.sv} & Synchronous 1024-word memory model with parameterized multi-cycle latency and deterministic data generation. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Section IV: Team Member Roles & Individual Contributions
+% -----------------------------------------------------------------------------
+\section{Team Member Roles and Engineering Contributions}
+\label{sec:contributions}
+
+The project research team comprises five student investigators at the Department of Computer Science and Artificial Intelligence, Newton School of Technology: Satyam Kumar, Krishna Verma, Akshit Vats, Chinmay Soni, and Lakshya Bapna. The core hardware implementation was structured into four primary modular work packages, alongside cross-functional verification, benchmark data analysis, and technical documentation. Based on repository commit records and engineering deliverables, the technical roles map as follows: Chinmay Soni developed the direct-mapped cache baseline and shared package (Work Package~1); Lakshya Bapna engineered the two-way datapath and datapath verification (Work Package~2); Satyam Kumar architected the LRU controller, cache FSM, and top-level integration (Work Package~3); Krishna Verma developed the reference main memory model, comparison testbench, and analytics pipeline (Work Package~4); and Akshit Vats contributed to verification support, trace validation, and academic reporting. Table~\ref{tab:member_contributions} details the technical responsibilities and verified artifacts corresponding to each work package, subject to human confirmation by the project team.
+
+\begin{table*}[htbp]
+\caption{Division of Technical Responsibilities and Engineering Contributions}
+\label{tab:member_contributions}
+\centering
+\begin{tabularx}{\textwidth}{lp{3.2cm}Xp{4.6cm}}
+\toprule
+\textbf{Author / Role} & \textbf{Assigned Module / Focus} & \textbf{Detailed Engineering Responsibilities and Deliverables} & \textbf{Verified Artifacts} \\
+\midrule
+\textbf{Chinmay Soni} (Member 1) & Direct-Mapped Cache \& Common Configuration &
+Developed the foundational SystemVerilog package (\texttt{cache\_pkg.sv}) specifying global architectural constants, address slices, and array dimensions. Implemented the complete 128-byte direct-mapped baseline cache (\texttt{direct\_mapped\_cache.sv}) featuring integrated valid/tag arrays, comparator, 4-word refill logic, and performance counters. &
+\texttt{rtl/cache\_pkg.sv} \newline \texttt{rtl/direct\_mapped\_cache.sv} \\
+\addlinespace[0.2em]
+\textbf{Lakshya Bapna} (Member 2) & Two-Way Datapath \& Datapath Verification &
+Engineered the modular dual-way storage datapath (\texttt{cache\_2way\_datapath.sv}) containing Way~0 and Way~1 valid, tag, and data arrays across four sets. Implemented parallel 26-bit tag matching circuitry, hit detection logic, way multiplexers, and 4-to-1 word extraction multiplexers. Authored unit testbench \texttt{tb/tb\_cache\_2way\_datapath.sv}. &
+\texttt{rtl/cache\_2way\_datapath.sv} \newline \texttt{tb/tb\_cache\_2way\_datapath.sv} \\
+\addlinespace[0.2em]
+\textbf{Satyam Kumar} (Member 3) & LRU Controller, Cache FSM, Integration \& Testing &
+Designed and implemented the standalone 1-bit LRU replacement controller (\texttt{rtl/lru\_controller.sv}) with invalid-first allocation priority. Architected the 5-state blocking cache FSM controller (\texttt{cache\_2way\_controller.sv}) managing handshakes, burst refills, and counter updates. Integrated the structural top-level wrapper (\texttt{cache\_2way\_top.sv}) and verified via unit/smoke testbenches. &
+\texttt{rtl/lru\_controller.sv} \newline \texttt{rtl/cache\_2way\_controller.sv} \newline \texttt{rtl/cache\_2way\_top.sv} \\
+\addlinespace[0.2em]
+\textbf{Krishna Verma} (Member 4) & Main Memory, Comparison TB \& Performance Analytics &
+Implemented the multi-cycle synchronous main memory model (\texttt{sim/simple\_main\_memory.sv}) with parameterized latency. Authored direct-mapped unit testbench (\texttt{tb/tb\_direct\_mapped.sv}) and unified comparative testbench (\texttt{tb/tb\_cache\_comparison.sv}) driving concurrent traces. Created automated data analytics pipeline (\texttt{analysis/analyze\_results.py}) and generated comparison plots. &
+\texttt{sim/simple\_main\_memory.sv} \newline \texttt{tb/tb\_cache\_comparison.sv} \newline \texttt{analysis/analyze\_results.py} \newline \texttt{results/results.csv} \\
+\addlinespace[0.2em]
+\textbf{Akshit Vats} (Member 5) & Verification Support, Benchmark Validation \& Reporting &
+Assisted in synthetic benchmark validation across access traces, verification of mathematical hardware invariants ($\text{hits} + \text{misses} == \text{accesses}$, $\text{mem\_reads} == 4 \times \text{misses}$), empirical results auditing, and preparation of Phase~I academic documentation and evaluation deliverables. &
+\texttt{results/results.csv} \newline \texttt{report/README.md} \newline \texttt{report/ieee\_phase1\_report.tex} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+All four implementation modules underwent rigorous code auditing, syntax sanitization, and port-level alignment during final integration. The shared package definition (\texttt{cache\_pkg.sv}) was compiled once across all compilation flows to avoid duplicate symbol collision in Icarus Verilog.
+
+% -----------------------------------------------------------------------------
+% Section V: Experimental Results & Comparative Performance Analysis
+% -----------------------------------------------------------------------------
+\section{Experimental Results and Comparative Performance Analysis}
+\label{sec:experiments}
+
+\begin{figure*}[t!]
+\centering
+\begin{minipage}{0.32\textwidth}
+  \centering
+  \includegraphics[width=0.92\linewidth]{hit_rate_comparison.png}
+  \vspace{0.15em}
+  \centerline{\small (a) Cache Hit Rate (\%)}
+\end{minipage}\hfill
+\begin{minipage}{0.32\textwidth}
+  \centering
+  \includegraphics[width=0.92\linewidth]{average_latency_comparison.png}
+  \vspace{0.15em}
+  \centerline{\small (b) Average Latency (Cycles/Access)}
+\end{minipage}\hfill
+\begin{minipage}{0.32\textwidth}
+  \centering
+  \includegraphics[width=0.92\linewidth]{memory_reads_comparison.png}
+  \vspace{0.15em}
+  \centerline{\small (c) Total Memory Word Reads}
+\end{minipage}
+\caption{Empirical comparative performance metrics across all four synthetic benchmark scenarios: (a) hit rate (\%), (b) average access latency (cycles per completed access), and (c) total off-chip memory word read operations, highlighting the 75\% memory traffic reduction and 64.29\% speedup achieved under conflict thrashing.}
+\label{fig:perf_comparisons}
+\end{figure*}
+
+\begin{table*}[t!]
+\caption{Complete Measured Experimental Results Across All Benchmark Scenarios}
+\label{tab:experimental_results}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccccc}
+\toprule
+\textbf{Scenario Description} & \textbf{Cache Architecture} & \textbf{Accesses} & \textbf{Hits} & \textbf{Misses} & \textbf{Hit Rate} & \textbf{Miss Rate} & \textbf{Mem Reads} & \textbf{Cycles} & \textbf{Avg Latency} \\
+\midrule
+\textbf{Scenario 1: Sequential} & Direct-Mapped & 4 & 3 & 1 & 75.00\% & 25.00\% & 4 & 27 & 6.75 cyc/acc \\
+(Spatial Locality) & Two-Way Set-Assoc. & 4 & 3 & 1 & 75.00\% & 25.00\% & 4 & 27 & 6.75 cyc/acc \\
+\midrule
+\textbf{Scenario 2: Conflict-Heavy} & Direct-Mapped & 8 & 0 & 8 & 0.00\% & 100.00\% & 32 & 140 & 17.50 cyc/acc \\
+(Thrashing Pattern) & Two-Way Set-Assoc. & 8 & 6 & 2 & \textbf{75.00\%} & \textbf{25.00\%} & \textbf{8} & \textbf{50} & \textbf{6.25 cyc/acc} \\
+\midrule
+\textbf{Scenario 3: Explicit LRU} & Direct-Mapped & 6 & 0 & 6 & 0.00\% & 100.00\% & 24 & 102 & 17.00 cyc/acc \\
+(3-Address Trace: $ABACAB$) & Two-Way Set-Assoc. & 6 & 2 & 4 & \textbf{33.33\%} & \textbf{66.67\%} & \textbf{16} & \textbf{72} & \textbf{12.00 cyc/acc} \\
+\midrule
+\textbf{Scenario 4: Mixed Trace} & Direct-Mapped & 16 & 4 & 12 & 25.00\% & 75.00\% & 48 & 216 & 13.50 cyc/acc \\
+(Realistic Access Sequence) & Two-Way Set-Assoc. & 16 & 4 & 12 & 25.00\% & 75.00\% & 48 & 216 & 13.50 cyc/acc \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\subsection{Experimental Setup and Verification Methodology}
+The verification suite is executed using the open-source Icarus Verilog (v12.0) compiler and simulation runtime engine. All testbenches are compiled with standard IEEE 1800-2012 flags (\texttt{-g2012 -Wall}). Both the direct-mapped cache and the 2-way set-associative cache are instantiated in parallel inside \texttt{tb/tb\_cache\_comparison.sv} and driven concurrently by independent CPU driver threads.
+
+The testbench incorporates two vital verification features:
+\begin{enumerate}
+    \item \textbf{Address Poisoning}: After a request is accepted on \texttt{cpu\_req\_ready}, the address bus is immediately overwritten with \texttt{32'hFFFF\_FFFF} on the subsequent negative clock edge. This ensures that the cache internal logic correctly latches the address and does not suffer from transparent latch errors or combinational leakage.
+    \item \textbf{Randomized Response Backpressure}: During selected accesses, the CPU driver artificially delays asserting \texttt{cpu\_resp\_ready} for multiple clock cycles, verifying that the cache controller holds \texttt{cpu\_resp\_valid} and \texttt{cpu\_resp\_data} perfectly stable without dropping data.
+\end{enumerate}
+
+Every executed transaction asserts two fundamental microarchitectural invariants:
+\begin{align}
+\text{hit\_count} + \text{miss\_count} &= \text{Total Completed Accesses} \\
+\text{mem\_word\_read\_count} &= 4 \times \text{miss\_count}
+\end{align}
+Failure of either invariant triggers an immediate simulation \texttt{\$fatal} termination.
+
+\subsection{Benchmark Scenarios and Quantitative Results}
+We evaluate both caches across four carefully constructed synthetic access traces representing canonical program access behaviors:
+\begin{itemize}
+    \item \textbf{Scenario 1: Sequential Spatial Locality (4 Accesses)}: Sequential word reads within the identical 16-byte block: addresses \texttt{0x00000000}, \texttt{0x00000004}, \texttt{0x00000008}, and \texttt{0x0000000C}.
+    \item \textbf{Scenario 2: Conflict-Heavy Trace (8 Accesses)}: Alternating references between two addresses that map to the identical cache set: \texttt{0x00000000} and \texttt{0x00000080} repeated four times.
+    \item \textbf{Scenario 3: Explicit Three-Address LRU Validation (6 Accesses)}: A canonical sequence $A \to B \to A \to C \to A \to B$ where $A = \texttt{0x00000000}$, $B = \texttt{0x00000080}$, and $C = \texttt{0x00000100}$. All three blocks map to Set~0 in the 2-way cache and Line~0 in the direct-mapped cache.
+    \item \textbf{Scenario 4: Mixed Workload Trace (16 Accesses)}: A complex trace exercising spatial stride, multi-set accesses across sets 0, 1, 2, and 3, and temporal reuse.
+\end{itemize}
+
+Table~\ref{tab:experimental_results} presents the complete, unedited simulation results exported to \texttt{results/results.csv}.
+
+\subsection{Detailed Architectural Analysis}
+
+\subsubsection{Scenario 1: Sequential Spatial Locality}
+In Scenario~1, both architectures exhibit identical performance: 3 hits and 1 miss (75.00\% hit rate), requiring 4 memory reads and 27 clock cycles (6.75 cycles/access). The initial access to address \texttt{0x00000000} results in a compulsory cold miss. The cache controller fetches four consecutive 32-bit words from main memory, populating the entire 16-byte line. Subsequent accesses to offsets \texttt{0x4}, \texttt{0x8}, and \texttt{0xC} immediately hit in the cache, requiring only a single-cycle lookup. This demonstrates the spatial locality benefit of multi-word cache lines: the initial miss penalty is amortized across subsequent word accesses within the line.
+
+\subsubsection{Scenario 2: Conflict-Heavy Thrashing Elimination}
+Scenario~2 provides dramatic quantitative proof of the superiority of set associativity. Addresses \texttt{0x00000000} and \texttt{0x00000080} both have index bits \texttt{3'b000} in the direct-mapped cache, but differing tags (\texttt{0x000000} versus \texttt{0x000001}). In the direct-mapped cache, every single access evicts the resident block loaded by the immediately preceding access. This catastrophic thrashing results in 8 misses out of 8 accesses (0.00\% hit rate), triggering 32 memory reads and consuming 140 clock cycles (17.50 cycles/access).
+
+In the 2-way set-associative cache, both addresses map to Set~0 (\texttt{set\_idx = 2'b00}), but have tags \texttt{0x000000} and \texttt{0x000002}. During the first two accesses, address \texttt{0x00000000} populates Way~0 and address \texttt{0x00000080} populates Way~1 via the invalid-first allocation rule. For the remaining six accesses, both lines reside simultaneously in Set~0. As a consequence, accesses 3 through 8 result in instantaneous cache hits. The 2-way cache achieves:
+\begin{itemize}
+    \item Hit rate increase from 0.00\% to 75.00\%.
+    \item Memory word reads reduced from 32 to 8 (a \textbf{75.00\% reduction} in memory bus traffic).
+    \item Total latency reduced from 140 cycles to 50 cycles (a \textbf{64.29\% speedup}).
+\end{itemize}
+
+\subsubsection{Scenario 3: Deterministic LRU Eviction Proof}
+Scenario~3 validates the exact cycle-by-cycle correctness of the 1-bit LRU controller. The step-by-step state trace is detailed in Table~\ref{tab:lru_trace}.
+
+\begin{table}[htbp]
+\caption{Cycle-by-Cycle Trace of Scenario 3 ($A \to B \to A \to C \to A \to B$)}
+\label{tab:lru_trace}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Step} & \textbf{Addr} & \textbf{Result} & \textbf{Set 0 Contents} & \textbf{LRU Bit} & \textbf{Victim} & \textbf{Outcome} \\
+\midrule
+1 & $A$ & Miss & Way 0: $A$, Way 1: Inv & 1 & Way 1 & Way 0 filled \\
+2 & $B$ & Miss & Way 0: $A$, Way 1: $B$ & 0 & Way 0 & Way 1 filled \\
+3 & $A$ & \textbf{Hit} & Way 0: $A$, Way 1: $B$ & \textbf{1} & \textbf{Way 1} & LRU set to 1 \\
+4 & $C$ & Miss & Way 0: $A$, Way 1: $C$ & 0 & Way 0 & \textbf{$B$ evicted by $C$} \\
+5 & $A$ & \textbf{Hit} & Way 0: $A$, Way 1: $C$ & 1 & Way 1 & $A$ preserved \\
+6 & $B$ & Miss & Way 0: $B$, Way 1: $C$ & 0 & Way 0 & $A$ evicted by $B$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+When block $C$ is accessed at Step~4, both ways in Set~0 are valid. Because block $A$ was hit in Step~3, the LRU bit points to Way~1 ($B$) as the victim. Thus, $C$ overwrites $B$, leaving $A$ intact. At Step~5, the access to $A$ results in a confirmed cache hit, proving that LRU correctly preserved the most recently referenced block. Finally, at Step~6, accessing $B$ causes a miss because $B$ was previously evicted. In contrast, the direct-mapped cache suffers a 100\% miss rate (0 hits, 6 misses, 24 memory reads, 102 cycles).
+
+\subsubsection{Scenario 4: Mixed Workload Dynamics}
+Scenario~4 exercises multi-set spatial distribution and capacity limits across 16 accesses. Both caches yield identical macroscopic results: 4 hits and 12 misses (25.00\% hit rate, 48 memory reads, 216 execution cycles). This occurs because the working set size exceeds the 2-way associativity limit for specific sets, causing capacity-induced evictions in both structures. This finding highlights a fundamental principle of computer architecture: while set associativity eliminates conflict misses up to degree $K$, it cannot eliminate capacity misses once the active working set surpasses the physical capacity of the set.
+
+\subsection{Visualized Performance Comparison}
+The quantitative metrics generated during simulation were processed by our Python analytics engine (\texttt{analysis/analyze\_results.py}). Fig.~\ref{fig:perf_comparisons} illustrates the comparative performance metrics across all four benchmark scenarios: (a) hit rate, (b) average access latency, and (c) total off-chip memory word read traffic.
+
+\subsection{Hardware Complexity and Architectural Assessment}
+The performance gains of set associativity are balanced by increased microarchitectural complexity. Table~\ref{tab:complexity_tradeoffs} provides a qualitative and quantitative comparison of hardware complexity.
+
+\begin{table}[htbp]
+\caption{Hardware Complexity and Resource Comparison}
+\label{tab:complexity_tradeoffs}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcc}
+\toprule
+\textbf{Hardware Resource} & \textbf{Direct-Mapped} & \textbf{2-Way Set-Assoc.} \\
+\midrule
+Tag Comparators & $1 \times 25$-bit & $2 \times 26$-bit \\
+Comparator Silicon Area & Baseline ($1.0\times$) & $\approx 2.08\times$ \\
+Data Multiplexing & 4-to-1 Word MUX & 2-Way MUX + 4-to-1 MUX \\
+Replacement Storage & 0 bits & 4 flip-flops (1 bit/set) \\
+Critical Path Delay & Low (1 Tag Match) & Moderate (Tag Match + MUX) \\
+Maximum Clock Frequency & Marginally Higher & Marginally Lower \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\textit{Implementation and Synthesis Note}: In this Phase~I study, RTL simulation was performed using Icarus Verilog to verify functional correctness and cycle-accurate behavior. FPGA synthesis and physical implementation were not performed. Synthesis validation is not claimed; the hardware resource and clock frequency comparisons in Table~\ref{tab:complexity_tradeoffs} represent qualitative architectural trade-offs based on structural RTL design. Neither commercial FPGA synthesis toolchains (such as AMD/Xilinx Vivado or Intel Quartus Prime) nor open-source synthesis tools (such as Yosys) were executed in this phase. However, all SystemVerilog modules have been authored strictly adhering to standard synthesizable RTL design principles (synchronous edge-triggered registers, distinct blocking assignments for combinational logic, non-blocking assignments for state registers, and complete case statements to avoid latch inference), ensuring readiness for physical FPGA synthesis in Phase~II.
+
+% -----------------------------------------------------------------------------
+% Section VI: Conclusion and Phase II Roadmap
+% -----------------------------------------------------------------------------
+\section{Conclusion and Future Work (Phase II)}
+\label{sec:conclusion}
+
+In this Phase~I investigation, we successfully designed, modeled, integrated, and empirically validated a 128-byte, 2-way set-associative cache with 1-bit LRU replacement against an identically configured direct-mapped baseline cache in IEEE 1800-2012 SystemVerilog. The experimental evaluation confirms that set associativity completely eliminates ping-pong cache thrashing under conflicting access patterns, elevating the hit rate from 0.00\% to 75.00\%, decreasing memory traffic by 75.00\%, and reducing total execution latency by 64.29\%. Furthermore, cycle-by-cycle testing of an explicit three-address conflict trace ($A \to B \to A \to C \to A \to B$) established the deterministic correctness of our invalid-first allocation priority and 1-bit LRU tracking algorithm.
+
+\subsection{Phase II Development Roadmap}
+Building upon the verified read-only baseline established in Phase~I, our Phase~II development roadmap encompasses:
+\begin{enumerate}
+    \item \textbf{Write Policy Integration}: Implementation of write-through with write buffers and write-back with dirty bits (\texttt{dirty\_array}), requiring cache-line write-back FSM sequences to main memory.
+    \item \textbf{Non-Blocking Cache Extensions}: Integration of Miss Status Holding Registers (MSHRs) to support hit-under-miss and miss-under-miss concurrency, enabling pipelined memory requests.
+    \item \textbf{Higher-Order Associativity}: Exploration of 4-way set-associative configurations using Pseudo-LRU (tree-PLRU) replacement policies to assess area-latency scaling.
+    \item \textbf{Physical FPGA Implementation}: Synthesis, placement, routing, and timing closure on an AMD/Xilinx Artix-7 (XC7A35T) FPGA development board to measure exact Look-Up Table (LUT), Flip-Flop (FF), Block RAM (BRAM), and maximum operating frequency ($F_{\max}$) trade-offs.
+\end{enumerate}
+
+% -----------------------------------------------------------------------------
+% References
+% -----------------------------------------------------------------------------
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

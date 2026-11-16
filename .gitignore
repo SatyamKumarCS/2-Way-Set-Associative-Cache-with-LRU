@@ -1,5 +1,6 @@
-# Simulation/build outputs
-build/
+# Simulation and compilation outputs
+build/*
+!build/.gitkeep
 sim.out
 *.out
 *.vvp
@@ -7,15 +8,48 @@ sim.out
 *.fst
 *.lxt
 *.lxt2
-*.log
 
-# Python cache
+# LaTeX intermediate build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.xdv
+
+# Preserve essential report artifacts and results
+!report/*.pdf
+!report/*.tex
+!report/*.bib
+!report/README.md
+!results/results.csv
+!results/*.png
+
+# Python cache and environments
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+ENV/
+env/
 
-# Editor/OS files
+# Editor and OS metadata
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
