@@ -3,6 +3,7 @@
 [![Phase](https://img.shields.io/badge/Project_Phase-Phase_I_Submission-blue.svg)](#)
 [![Language](https://img.shields.io/badge/Language-SystemVerilog_IEEE_1800--2012-brightgreen.svg)](#)
 [![Simulation](https://img.shields.io/badge/Simulation-Icarus_Verilog_v12-orange.svg)](#)
+[![Video Demo](https://img.shields.io/badge/Demo-Video_Walkthrough-purple.svg)](Cache_Project_Demo_Final.mp4)
 [![Report](https://img.shields.io/badge/Report-IEEE_Conference_PDF-red.svg)](report/ieee_phase1_report.pdf)
 [![Repository](https://img.shields.io/badge/GitHub-Repository-black.svg)](https://github.com/chinmay7980/2-Way-Set-Associative-Cache-with-LRU.git)
 
@@ -190,6 +191,7 @@ MCA_project/
 ├── .gitignore                   # Excludes simulation binaries and LaTeX build artifacts
 ├── .gitattributes              # Line-ending and path attributes
 ├── README.md                   # This project overview, architecture guide, and evaluation README
+├── Cache_Project_Demo_Final.mp4# Prototype walk-through demonstration video
 ├── analysis/
 │   ├── .gitkeep
 │   └── analyze_results.py      # Automated performance analytics and Matplotlib plot generator
@@ -378,7 +380,7 @@ tectonic report/ieee_phase1_report.tex -o report/
 
 ## 11. Prototype Demonstration Video
 
-* **Demonstration Video**: `[Add actual video URL after uploading]`
+* **Demonstration Video**: [`Cache_Project_Demo_Final.mp4`](Cache_Project_Demo_Final.mp4) (Direct repository video link)
 * **Demonstration Scope**:
   * Overview of the SystemVerilog repository structure and modular RTL files.
   * Live execution of Icarus Verilog unit testbenches and comparative simulation (`tb_cache_comparison`).
