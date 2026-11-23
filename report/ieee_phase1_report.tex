@@ -207,34 +207,39 @@ Fig.~\ref{fig:addr_mapping} illustrates the physical 32-bit byte-address partiti
 \centering
 \resizebox{\columnwidth}{!}{%
 \begin{tikzpicture}[
-    scale=0.88, every node/.style={scale=0.88},
-    field/.style={rectangle, draw=black, thick, fill=blue!10, minimum height=1.8em, align=center},
-    lbl/.style={font=\scriptsize, align=center}
+    box/.style={draw=black, thick, minimum height=2.2em, align=center, font=\small},
+    lbl/.style={font=\scriptsize, align=center, text=black}
 ]
 
-% Direct Mapped Address Breakdown
-\node[anchor=west, font=\bfseries\small] at (0, 2.2) {Direct-Mapped 32-bit Address:};
-\node[field, minimum width=3.8cm, fill=red!15] (dm_tag) at (1.9, 1.4) {Tag [31:7]};
-\node[field, minimum width=1.4cm, fill=green!15] (dm_idx) at (4.5, 1.4) {Index [6:4]};
-\node[field, minimum width=1.3cm, fill=yellow!20] (dm_word) at (5.85, 1.4) {Word [3:2]};
-\node[field, minimum width=1.1cm, fill=gray!20] (dm_byte) at (7.05, 1.4) {Byte [1:0]};
+% ---------------- Direct-Mapped Address ----------------
+\node[anchor=west, font=\bfseries\small] at (0, 2.5) {Direct-Mapped 32-bit Address:};
 
-\node[lbl] at (1.9, 0.8) {25 bits};
-\node[lbl] at (4.5, 0.8) {3 bits (8 lines)};
-\node[lbl] at (5.85, 0.8) {2 bits (4 words)};
-\node[lbl] at (7.05, 0.8) {2 bits};
+% Fields (Total width = 8.6cm)
+\node[box, fill=red!18, minimum width=3.6cm, anchor=west] (dm_tag) at (0, 1.7) {Tag [31:7]};
+\node[box, fill=green!18, minimum width=2.0cm, anchor=west] (dm_idx) at (3.6, 1.7) {Index [6:4]};
+\node[box, fill=yellow!25, minimum width=1.6cm, anchor=west] (dm_word) at (5.6, 1.7) {Word [3:2]};
+\node[box, fill=gray!20, minimum width=1.4cm, anchor=west] (dm_byte) at (7.2, 1.7) {Byte [1:0]};
 
-% 2-Way Set Associative Address Breakdown
-\node[anchor=west, font=\bfseries\small] at (0, -0.1) {2-Way Set-Associative 32-bit Address:};
-\node[field, minimum width=4.1cm, fill=red!15] (sa_tag) at (2.05, -0.9) {Tag [31:6]};
-\node[field, minimum width=1.1cm, fill=green!15] (sa_idx) at (4.65, -0.9) {Set [5:4]};
-\node[field, minimum width=1.3cm, fill=yellow!20] (sa_word) at (5.85, -0.9) {Word [3:2]};
-\node[field, minimum width=1.1cm, fill=gray!20] (sa_byte) at (7.05, -0.9) {Byte [1:0]};
+% Sub-labels (centered below each field)
+\node[lbl] at (1.8, 0.8) {25 bits};
+\node[lbl] at (4.6, 0.8) {3 bits\\(8 lines)};
+\node[lbl] at (6.4, 0.8) {2 bits\\(4 words)};
+\node[lbl] at (7.9, 0.8) {2 bits\\(offset)};
 
-\node[lbl] at (2.05, -1.5) {26 bits};
-\node[lbl] at (4.65, -1.5) {2 bits (4 sets)};
-\node[lbl] at (5.85, -1.5) {2 bits (4 words)};
-\node[lbl] at (7.05, -1.5) {2 bits};
+% ---------------- 2-Way Set-Associative Address ----------------
+\node[anchor=west, font=\bfseries\small] at (0, -0.4) {2-Way Set-Associative 32-bit Address:};
+
+% Fields (Total width = 8.6cm)
+\node[box, fill=red!18, minimum width=3.8cm, anchor=west] (sa_tag) at (0, -1.2) {Tag [31:6]};
+\node[box, fill=green!18, minimum width=1.8cm, anchor=west] (sa_idx) at (3.8, -1.2) {Set [5:4]};
+\node[box, fill=yellow!25, minimum width=1.6cm, anchor=west] (sa_word) at (5.6, -1.2) {Word [3:2]};
+\node[box, fill=gray!20, minimum width=1.4cm, anchor=west] (sa_byte) at (7.2, -1.2) {Byte [1:0]};
+
+% Sub-labels (centered below each field)
+\node[lbl] at (1.9, -2.1) {26 bits};
+\node[lbl] at (4.7, -2.1) {2 bits\\(4 sets)};
+\node[lbl] at (6.4, -2.1) {2 bits\\(4 words)};
+\node[lbl] at (7.9, -2.1) {2 bits\\(offset)};
 
 \end{tikzpicture}%
 }
