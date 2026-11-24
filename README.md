@@ -305,6 +305,25 @@ Processes [`results/results.csv`](results/results.csv) and produces the three pu
 python3 analysis/analyze_results.py
 ```
 
+### D. Waveform Generation & GTKWave Inspection
+
+To dump cycle-accurate VCD waveforms for GTKWave analysis, compile with the `-DDUMP_WAVES` macro:
+```bash
+# Direct-Mapped cache unit waveform (build/waves/direct_mapped_cache.vcd)
+iverilog -g2012 -Wall -I rtl -s tb_dm_test -DDUMP_WAVES -o build/direct_mapped_wave.vvp \
+  rtl/cache_pkg.sv rtl/direct_mapped_cache.sv tb/tb_direct_mapped.sv
+vvp build/direct_mapped_wave.vvp
+
+# Dedicated 6-access LRU replacement demonstration (build/waves/lru_replacement_demo.vcd)
+iverilog -g2012 -Wall -I rtl -I sim -s tb_lru_demo_wave -o build/lru_demo_wave.vvp \
+  rtl/cache_pkg.sv rtl/cache_2way_datapath.sv rtl/lru_controller.sv \
+  rtl/cache_2way_controller.sv rtl/cache_2way_top.sv \
+  sim/simple_main_memory.sv tb/tb_lru_demo_wave.sv
+vvp build/lru_demo_wave.vvp
+```
+All waveforms are written to `build/waves/`. For signal navigation, GTKWave installation on macOS, and the six viva demonstration walkthroughs, see:
+👉 [**docs/WAVEFORM_GUIDE.md**](docs/WAVEFORM_GUIDE.md)
+
 ---
 
 ## 8. Empirical Benchmark Results & Architectural Analysis

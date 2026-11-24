@@ -45,6 +45,13 @@ module tb_cache_comparison;
     logic clk;
     logic rst_n;
 
+`ifdef DUMP_WAVES
+    initial begin
+        $dumpfile("build/waves/two_way_lru_cache.vcd");
+        $dumpvars(0, tb_cache_comparison);
+    end
+`endif
+
     initial clk = 1'b0;
     always #5 clk = ~clk; // 100 MHz clock (10 ns period)
 

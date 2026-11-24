@@ -26,6 +26,13 @@ module tb_dm_test;
     logic clk;
     logic rst_n;
 
+`ifdef DUMP_WAVES
+    initial begin
+        $dumpfile("build/waves/direct_mapped_cache.vcd");
+        $dumpvars(0, tb_dm_test);
+    end
+`endif
+
     // CPU Interface
     logic        cpu_req_valid;
     logic        cpu_req_ready;
